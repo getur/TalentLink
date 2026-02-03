@@ -1,17 +1,62 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Routes, Route, useParams, Link, useNavigate } from 'react-router-dom';
 import { 
   Search, MapPin, Briefcase, Clock, Bookmark, Activity, Stars, Plus, 
   CheckCircle2, FileText, Download, Users, TrendingUp, Info, Phone, Mail, User, X, ClipboardCheck, Tag,
-  PanelLeftClose, PanelLeftOpen, ArrowLeft, Calendar
+  ArrowLeft, Calendar, Home, Settings, Copy, ExternalLink, Globe, ShieldCheck,
+  GraduationCap, Building2, PencilLine, Sparkles, FileDown, Save, Trash2, PlusCircle,
+  SlidersHorizontal, ArrowUpDown, LayoutGrid, ChevronDown
 } from 'lucide-react';
 import Navbar from './components/Navbar';
 import Sidebar from './components/Sidebar';
 import JobCard from './components/JobCard';
 import { MOCK_OPPORTUNITIES, MOCK_APPLICATIONS, MOCK_USER } from './constants';
-import { Opportunity, UserType, Application, ApplicationStatus, Department, Office, PositionType, Duration } from './types';
+import { Opportunity, UserType, Application, ApplicationStatus, Department, Office, PositionType, Duration, UserProfile, Education, ProfessionalExperience, Skill, Language } from './types';
 import { getJobMatchScore, parseResumeAI } from './services/geminiService';
+
+interface ModalOverlayProps {
+  title: string;
+  onClose: () => void;
+  children: React.ReactNode;
+}
+
+const ModalOverlay: React.FC<ModalOverlayProps> = ({ title, onClose, children }) => (
+  <div className="fixed inset-0 z-[100] bg-black/40 backdrop-blur-sm flex items-center justify-center p-8 animate-in fade-in duration-200">
+    <div className="bg-white border border-gray-100 rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
+      <div className="px-8 py-6 border-b border-gray-50 flex justify-between items-center bg-gray-50/50">
+        <h3 className="text-sm font-black text-black uppercase tracking-widest">{title}</h3>
+        <button onClick={onClose} className="p-2 hover:bg-white rounded-lg transition-colors"><X className="w-5 h-5 text-gray-400" /></button>
+      </div>
+      <div className="p-8 max-h-[70vh] overflow-y-auto custom-scrollbar">
+        {children}
+      </div>
+    </div>
+  </div>
+);
+
+interface SectionCardProps {
+  title: string;
+  children: React.ReactNode;
+  actionIcon?: any;
+  onAction?: () => void;
+}
+
+const SectionCard: React.FC<SectionCardProps> = ({ title, children, actionIcon: ActionIcon, onAction }) => (
+  <div className="bg-white border border-gray-100 rounded-xl overflow-hidden mb-4 shadow-sm">
+    <div className="px-8 py-5 border-b border-gray-50 flex justify-between items-center">
+      <h3 className="text-sm font-black text-black uppercase tracking-widest">{title}</h3>
+      {ActionIcon && (
+        <button onClick={onAction} className="p-2 hover:bg-gray-50 rounded-lg text-gray-400 hover:text-black transition-colors">
+          <ActionIcon className="w-4 h-4" />
+        </button>
+      )}
+    </div>
+    <div className="p-8">
+      {children}
+    </div>
+  </div>
+);
 
 const OpportunityListView = ({ userType }: { userType: UserType }) => {
   const [searchTerm, setSearchTerm] = useState('');
@@ -19,26 +64,41 @@ const OpportunityListView = ({ userType }: { userType: UserType }) => {
   const [selectedDepartments, setSelectedDepartments] = useState<Department[]>([]);
   const [selectedPositionTypes, setSelectedPositionTypes] = useState<PositionType[]>([]);
   const [selectedDurations, setSelectedDurations] = useState<Duration[]>([]);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const [sortBy, setSortBy] = useState('newest');
+  const [visibleCount, setVisibleCount] = useState(6);
 
   const filteredOpportunities = useMemo(() => {
-    return MOCK_OPPORTUNITIES.filter(opp => {
+    let result = MOCK_OPPORTUNITIES.filter(opp => {
       const matchesSearch = 
         opp.title.toLowerCase().includes(searchTerm.toLowerCase()) || 
         opp.department.toLowerCase().includes(searchTerm.toLowerCase()) ||
         opp.description.toLowerCase().includes(searchTerm.toLowerCase());
       
       const matchesOffice = selectedOffice === 'All Offices' || opp.office === selectedOffice;
-      
       const matchesDept = selectedDepartments.length === 0 || selectedDepartments.includes(opp.department);
-      
       const matchesPos = selectedPositionTypes.length === 0 || selectedPositionTypes.includes(opp.pos_type);
-      
       const matchesDur = selectedDurations.length === 0 || selectedDurations.includes(opp.duration);
 
       return matchesSearch && matchesOffice && matchesDept && matchesPos && matchesDur;
     });
-  }, [searchTerm, selectedOffice, selectedDepartments, selectedPositionTypes, selectedDurations]);
+
+    if (sortBy === 'newest') {
+      result = [...result].sort((a, b) => new Date(b.post_date).getTime() - new Date(a.post_date).getTime());
+    } else if (sortBy === 'oldest') {
+      result = [...result].sort((a, b) => new Date(a.post_date).getTime() - new Date(b.post_date).getTime());
+    } else if (sortBy === 'due_date') {
+      result = [...result].sort((a, b) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime());
+    }
+
+    return result;
+  }, [searchTerm, selectedOffice, selectedDepartments, selectedPositionTypes, selectedDurations, sortBy]);
+
+  const displayedOpportunities = useMemo(() => {
+    return filteredOpportunities.slice(0, visibleCount);
+  }, [filteredOpportunities, visibleCount]);
 
   const handleFilterToggle = (category: string, value: string) => {
     if (category === 'department') {
@@ -56,10 +116,24 @@ const OpportunityListView = ({ userType }: { userType: UserType }) => {
     } else if (category === 'office') {
       setSelectedOffice(prev => prev === value ? 'All Offices' : value);
     }
+    setVisibleCount(6);
+  };
+
+  const handleClearAll = () => {
+    setSearchTerm('');
+    setSelectedOffice('All Offices');
+    setSelectedDepartments([]);
+    setSelectedPositionTypes([]);
+    setSelectedDurations([]);
+    setVisibleCount(6);
+  };
+
+  const handleLoadMore = () => {
+    setVisibleCount(prev => prev + 6);
   };
 
   return (
-    <div className="max-w-7xl mx-auto px-8 py-10 flex bg-white gap-0">
+    <div className="max-w-7xl mx-auto px-8 py-10 flex bg-white gap-0 min-h-screen">
       {isSidebarOpen && (
         <Sidebar 
           filters={{
@@ -69,25 +143,20 @@ const OpportunityListView = ({ userType }: { userType: UserType }) => {
             office: selectedOffice
           }}
           onFilterToggle={handleFilterToggle}
+          sortBy={sortBy}
+          onSortChange={setSortBy}
+          viewMode={viewMode}
+          onViewChange={setViewMode}
         />
       )}
       <main className={`flex-1 transition-all duration-300`}>
         <div className="mb-12 flex justify-between items-end">
-          <div className="flex items-start gap-4">
-            <button 
-              onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-              className="mt-1 p-2 hover:bg-gray-50 rounded-lg text-gray-400 hover:text-black transition-colors border border-transparent hover:border-gray-100"
-              title={isSidebarOpen ? "Hide Filters" : "Show Filters"}
-            >
-              {isSidebarOpen ? <PanelLeftClose className="w-5 h-5" /> : <PanelLeftOpen className="w-5 h-5" />}
-            </button>
-            <div>
-              <h1 className="text-3xl font-extrabold text-black mb-1">AIESEC Opportunities</h1>
-              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Internal Talent Marketplace</p>
-            </div>
+          <div>
+            <h1 className="text-3xl font-extrabold text-black mb-1">AIESEC Opportunities</h1>
+            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Internal Talent Marketplace</p>
           </div>
           {userType !== 'Member' && (
-            <button className="bg-black text-white px-6 py-2.5 rounded-lg text-xs font-bold uppercase tracking-widest flex items-center gap-2 hover:bg-gray-800 transition-colors">
+            <button className="bg-black text-white px-6 py-2.5 rounded-lg text-xs font-bold uppercase tracking-widest flex items-center gap-2 hover:bg-gray-800 transition-colors shadow-lg shadow-gray-100">
               <Plus className="w-4 h-4" />
               Post Role
             </button>
@@ -101,7 +170,7 @@ const OpportunityListView = ({ userType }: { userType: UserType }) => {
               <input 
                 type="text" 
                 placeholder="Search roles, functional areas, keywords..." 
-                className="bg-transparent border-none focus:outline-none text-sm text-black w-full placeholder:text-gray-400 font-medium" 
+                className="bg-transparent border-none focus:outline-none text-sm text-black w-full placeholder:text-gray-400 font-bold" 
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
@@ -109,7 +178,7 @@ const OpportunityListView = ({ userType }: { userType: UserType }) => {
             <div className="flex-1 flex items-center gap-3 pl-4 pr-2 border-r border-gray-100">
               <MapPin className="w-4 h-4 text-gray-400" />
               <select 
-                className="bg-transparent border-none focus:outline-none text-sm text-black w-full font-bold cursor-pointer"
+                className="bg-transparent border-none focus:outline-none text-sm text-black w-full font-black cursor-pointer"
                 value={selectedOffice}
                 onChange={(e) => setSelectedOffice(e.target.value)}
               >
@@ -127,41 +196,75 @@ const OpportunityListView = ({ userType }: { userType: UserType }) => {
           </div>
         </div>
 
-        <div className="mb-8 flex justify-between items-center">
+        <div className="mb-8 flex justify-between items-center border-b border-gray-50 pb-6">
           <div className="flex items-center gap-3">
-            <h2 className="text-sm font-extrabold text-black uppercase tracking-widest">Available Opportunities</h2>
+            <h2 className="text-xs font-extrabold text-black uppercase tracking-widest">Available Opportunities</h2>
             <span className="text-[10px] font-bold text-gray-300 uppercase">/</span>
-            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{filteredOpportunities.length} results found</span>
+            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{filteredOpportunities.length} results</span>
           </div>
-          {(searchTerm || selectedOffice !== 'All Offices' || selectedDepartments.length > 0 || selectedPositionTypes.length > 0 || selectedDurations.length > 0) && (
+          
+          <div className="flex items-center gap-8">
             <button 
-              onClick={() => {
-                setSearchTerm('');
-                setSelectedOffice('All Offices');
-                setSelectedDepartments([]);
-                setSelectedPositionTypes([]);
-                setSelectedDurations([]);
-              }}
-              className="text-[10px] font-bold text-gray-400 uppercase tracking-widest hover:text-black"
+              onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+              className={`flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest transition-colors ${isSidebarOpen ? 'text-black' : 'text-gray-400 hover:text-black'}`}
             >
-              Clear all
+              <SlidersHorizontal className="w-3.5 h-3.5" />
+              Filter
             </button>
-          )}
+            <button 
+              onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+              className={`flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest transition-colors ${isSidebarOpen ? 'text-black' : 'text-gray-400 hover:text-black'}`}
+            >
+              <ArrowUpDown className="w-3.5 h-3.5" />
+              Sort
+            </button>
+            <button 
+              onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+              className={`flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest transition-colors ${isSidebarOpen ? 'text-black' : 'text-gray-400 hover:text-black'}`}
+            >
+              <LayoutGrid className="w-3.5 h-3.5" />
+              View
+            </button>
+            {(searchTerm || selectedOffice !== 'All Offices' || selectedDepartments.length > 0 || selectedPositionTypes.length > 0 || selectedDurations.length > 0) && (
+              <button 
+                onClick={handleClearAll}
+                className="text-[10px] font-bold text-orange-500 uppercase tracking-widest hover:underline border-l border-gray-100 pl-8"
+              >
+                Clear all
+              </button>
+            )}
+          </div>
         </div>
 
-        {filteredOpportunities.length > 0 ? (
-          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6 pb-20">
-            {filteredOpportunities.map(opp => (
-              <JobCard key={opp.id} job={opp} />
-            ))}
+        {displayedOpportunities.length > 0 ? (
+          <div className="space-y-12 pb-32">
+            <div className={viewMode === 'grid' ? "grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6" : "flex flex-col gap-3"}>
+              {displayedOpportunities.map(opp => (
+                <JobCard key={opp.id} job={opp} viewMode={viewMode} />
+              ))}
+            </div>
+
+            {visibleCount < filteredOpportunities.length && (
+              <div className="flex justify-center pt-8">
+                <button 
+                  onClick={handleLoadMore}
+                  className="group flex flex-col items-center gap-3 active:scale-95 transition-all"
+                >
+                  <span className="text-[10px] font-bold text-gray-400 uppercase tracking-[0.2em] group-hover:text-black">Load More Positions</span>
+                  <div className="w-10 h-10 rounded-full border border-gray-100 flex items-center justify-center text-gray-300 group-hover:text-black group-hover:border-black bg-white shadow-sm transition-all">
+                    <ChevronDown className="w-5 h-5 group-hover:translate-y-0.5 transition-transform" />
+                  </div>
+                </button>
+              </div>
+            )}
           </div>
         ) : (
           <div className="py-20 text-center border border-dashed border-gray-100 rounded-2xl bg-gray-50/50">
             <div className="w-12 h-12 bg-white border border-gray-100 rounded-xl flex items-center justify-center mx-auto mb-4 text-gray-300">
               <Search className="w-6 h-6" />
             </div>
-            <p className="text-sm font-bold text-black uppercase tracking-widest">No opportunities found</p>
-            <p className="text-xs text-gray-400 mt-2">Try adjusting your filters or search keywords.</p>
+            <p className="text-sm font-bold text-black uppercase tracking-widest">No matching roles</p>
+            <p className="text-xs text-gray-400 mt-2 font-bold">Try adjusting your filters or search keywords.</p>
           </div>
         )}
       </main>
@@ -188,7 +291,7 @@ const DashboardView = ({ userType }: { userType: UserType }) => {
         </h1>
       </div>
 
-      <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+      <div className="bg-white rounded-xl border border-gray-100 overflow-hidden shadow-sm">
         <table className="w-full text-left border-collapse">
           <thead>
             <tr className="bg-gray-50/50">
@@ -201,13 +304,13 @@ const DashboardView = ({ userType }: { userType: UserType }) => {
             {MOCK_APPLICATIONS.map(app => {
               const opp = MOCK_OPPORTUNITIES.find(o => o.id === app.opportunity_id);
               return (
-                <tr key={app.id} className="hover:bg-gray-50/30 transition-colors">
+                <tr key={app.id} className="hover:bg-gray-50/30 transition-colors cursor-pointer">
                   <td className="px-8 py-5">
                     <span className="text-sm font-bold text-black">{opp?.title}</span>
                   </td>
                   <td className="px-8 py-5 text-xs font-bold text-gray-400 uppercase tracking-wider">{opp?.department}</td>
                   <td className="px-8 py-5 text-right">
-                    <span className={`px-3 py-1 rounded-md text-[10px] font-bold uppercase border ${getStatusColor(app.status)}`}>
+                    <span className={`px-3 py-1.5 rounded-md text-[10px] font-bold uppercase border ${getStatusColor(app.status)}`}>
                       {app.status}
                     </span>
                   </td>
@@ -216,95 +319,6 @@ const DashboardView = ({ userType }: { userType: UserType }) => {
             })}
           </tbody>
         </table>
-      </div>
-    </div>
-  );
-};
-
-const ProfileView = () => {
-  const [profile, setProfile] = useState(MOCK_USER);
-  const [parsing, setParsing] = useState(false);
-
-  const handleResumeSync = async () => {
-    setParsing(true);
-    const result = await parseResumeAI("Experienced project leader in youth organizations, proficient in marketing and community outreach.");
-    setProfile(prev => ({
-      ...prev,
-      skills: [...prev.skills, ...result.skills.map((s: string) => ({ skill_name: s, category: 'Hard', level: 'Beginner' }))],
-      bio: result.bio
-    }));
-    setParsing(false);
-  };
-
-  return (
-    <div className="max-w-5xl mx-auto py-20 px-8">
-      <div className="flex flex-col md:flex-row gap-12 mb-20">
-        <div className="md:w-1/3">
-          <div className="w-40 h-40 rounded-2xl bg-gray-50 border border-gray-100 mb-6 p-1">
-            <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${profile.username}`} alt="Avatar" className="w-full h-full object-cover rounded-xl" />
-          </div>
-          <h1 className="text-2xl font-extrabold text-black mb-1">{profile.first_name} {profile.last_name}</h1>
-          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-6">{profile.current_pos_type} • {profile.office}</p>
-          
-          <div className="space-y-4 pt-6 border-t border-gray-100">
-            <div className="flex items-center gap-3 text-xs text-gray-500 font-bold uppercase tracking-wider">
-               <Mail className="w-4 h-4" /> {profile.email}
-            </div>
-            <div className="flex items-center gap-3 text-xs text-gray-500 font-bold uppercase tracking-wider">
-               <Activity className="w-4 h-4" /> Joined {profile.join_date}
-            </div>
-          </div>
-        </div>
-
-        <div className="flex-1 space-y-12">
-          <section>
-            <h3 className="text-sm font-extrabold uppercase tracking-widest text-black mb-6">About Me</h3>
-            <p className="text-sm text-gray-500 leading-relaxed font-medium">{profile.bio}</p>
-          </section>
-
-          <section>
-            <div className="flex justify-between items-center mb-6">
-              <h3 className="text-sm font-extrabold uppercase tracking-widest text-black">Education</h3>
-              <Plus className="w-4 h-4 text-gray-400 cursor-pointer" />
-            </div>
-            <div className="space-y-6">
-              {profile.education.map((edu, i) => (
-                <div key={i} className="p-6 border border-gray-100 rounded-xl bg-gray-50/50">
-                  <div className="flex justify-between items-start mb-2">
-                    <h4 className="text-sm font-bold text-black">{edu.institution_name}</h4>
-                    <span className="text-[10px] font-bold text-gray-400 uppercase bg-white px-2 py-1 rounded border border-gray-100">{edu.status}</span>
-                  </div>
-                  <p className="text-xs text-gray-500 font-medium mb-1">{edu.degree} in {edu.field_of_study}</p>
-                  <p className="text-[10px] text-gray-400 font-bold uppercase">{edu.start_date} — {edu.end_date || 'Present'}</p>
-                </div>
-              ))}
-            </div>
-          </section>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            <div className="p-8 border border-gray-100 rounded-xl">
-              <h3 className="text-xs font-bold uppercase tracking-widest mb-6">Skills</h3>
-              <div className="flex flex-wrap gap-2">
-                {profile.skills.map((s, i) => (
-                  <span key={i} className="px-3 py-1 bg-gray-50 border border-gray-100 rounded text-[10px] font-bold text-gray-400 uppercase">{s.skill_name}</span>
-                ))}
-              </div>
-            </div>
-            <div className="p-8 border border-gray-100 rounded-xl flex flex-col justify-between">
-              <div>
-                <h3 className="text-xs font-bold uppercase tracking-widest mb-2">AI Sync</h3>
-                <p className="text-[10px] text-gray-400 font-bold uppercase mb-6">Sync profile with CV content</p>
-              </div>
-              <button 
-                onClick={handleResumeSync}
-                disabled={parsing}
-                className="w-full py-2.5 border border-gray-100 bg-gray-50 text-[10px] font-bold uppercase tracking-widest text-gray-400 hover:text-black hover:border-black transition-all disabled:opacity-50"
-              >
-                {parsing ? 'Analyzing...' : 'Sync via Gemini'}
-              </button>
-            </div>
-          </div>
-        </div>
       </div>
     </div>
   );
@@ -379,6 +393,13 @@ const JobDetailView = () => {
             </div>
           </div>
           <div className="flex items-center gap-3">
+             <button className="p-3 border border-gray-100 rounded-xl text-gray-400 hover:text-black hover:border-gray-300 transition-all">
+               <Bookmark className="w-4 h-4" />
+             </button>
+             <button className="bg-white text-black border border-gray-100 px-6 py-3 rounded-xl text-[10px] font-bold uppercase tracking-widest hover:border-gray-300 transition-all flex items-center gap-2">
+               <FileDown className="w-4 h-4" />
+               Download PDF
+             </button>
              <button onClick={() => setApplying(true)} className="bg-black text-white px-10 py-3 rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-gray-800 transition-all">
                Apply Now
              </button>
@@ -455,9 +476,242 @@ const JobDetailView = () => {
   );
 };
 
+const ProfileView = () => {
+  const [profile, setProfile] = useState<UserProfile>(MOCK_USER);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [activeModal, setActiveModal] = useState<'exp' | 'edu' | 'skill' | 'lang' | null>(null);
+
+  const handleSync = async () => {
+    setIsSyncing(true);
+    try {
+      const result = await parseResumeAI(profile.bio || "Experienced student leader focused on youth development.");
+      setProfile(prev => ({
+        ...prev,
+        skills: [...prev.skills, ...result.skills.map((s: string) => ({ skill_name: s, category: 'Hard', level: 'Intermediate' as any }))],
+        bio: result.bio
+      }));
+      alert("Profile synced with TalentLink AI.");
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-gray-50/30 pb-32">
+      {/* Modals for Adding Items */}
+      {activeModal === 'exp' && (
+        <ModalOverlay title="Add Experience" onClose={() => setActiveModal(null)}>
+          <form className="space-y-6" onSubmit={(e) => {
+            e.preventDefault();
+            const fd = new FormData(e.currentTarget);
+            const newItem: ProfessionalExperience = {
+              organization: fd.get('org') as string,
+              title: fd.get('title') as string,
+              is_external: fd.get('type') === 'External',
+              location: fd.get('loc') as string,
+              start_date: fd.get('start') as string,
+              end_date: (fd.get('end') as string) || undefined,
+              responsibilities: fd.get('desc') as string,
+            };
+            setProfile({ ...profile, professional: [newItem, ...profile.professional] });
+            setActiveModal(null);
+          }}>
+            <div>
+              <label className="block text-[10px] font-black text-gray-400 uppercase mb-2">Organization</label>
+              <input name="org" required className="w-full bg-gray-50 border border-gray-100 rounded-lg p-3 text-sm focus:outline-none focus:border-black font-bold" placeholder="e.g. AIESEC in Mozambique" />
+            </div>
+            <div>
+              <label className="block text-[10px] font-black text-gray-400 uppercase mb-2">Role Title</label>
+              <input name="title" required className="w-full bg-gray-50 border border-gray-100 rounded-lg p-3 text-sm focus:outline-none focus:border-black font-bold" placeholder="e.g. LCVP Expansion" />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-[10px] font-black text-gray-400 uppercase mb-2">Start Period</label>
+                <input name="start" type="month" required className="w-full bg-gray-50 border border-gray-100 rounded-lg p-3 text-sm focus:outline-none focus:border-black font-bold" />
+              </div>
+              <div>
+                <label className="block text-[10px] font-black text-gray-400 uppercase mb-2">Completion Period</label>
+                <input name="end" type="month" className="w-full bg-gray-50 border border-gray-100 rounded-lg p-3 text-sm focus:outline-none focus:border-black font-bold" />
+              </div>
+            </div>
+            <div>
+              <label className="block text-[10px] font-black text-gray-400 uppercase mb-2">Impact Summary</label>
+              <textarea name="desc" rows={4} className="w-full bg-gray-50 border border-gray-100 rounded-lg p-3 text-sm focus:outline-none focus:border-black font-medium" placeholder="Briefly describe your impact..." />
+            </div>
+            <button type="submit" className="w-full bg-black text-white py-3 rounded-lg text-xs font-black uppercase tracking-widest hover:bg-gray-800 transition-colors">Record Experience</button>
+          </form>
+        </ModalOverlay>
+      )}
+
+      {activeModal === 'edu' && (
+        <ModalOverlay title="Add Education" onClose={() => setActiveModal(null)}>
+          <form className="space-y-6" onSubmit={(e) => {
+            e.preventDefault();
+            const fd = new FormData(e.currentTarget);
+            const newItem: Education = {
+              institution_name: fd.get('inst') as string,
+              degree: fd.get('deg') as string,
+              field_of_study: fd.get('field') as string,
+              status: fd.get('status') as any,
+              start_date: fd.get('start') as string,
+              end_date: (fd.get('end') as string) || undefined,
+              description: fd.get('desc') as string,
+            };
+            setProfile({ ...profile, education: [newItem, ...profile.education] });
+            setActiveModal(null);
+          }}>
+            <div>
+              <label className="block text-[10px] font-black text-gray-400 uppercase mb-2">Institution</label>
+              <input name="inst" required className="w-full bg-gray-50 border border-gray-100 rounded-lg p-3 text-sm focus:outline-none focus:border-black font-bold" placeholder="University Name" />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-[10px] font-black text-gray-400 uppercase mb-2">Degree</label>
+                <input name="deg" required className="w-full bg-gray-50 border border-gray-100 rounded-lg p-3 text-sm focus:outline-none focus:border-black font-bold" placeholder="e.g. Bachelor" />
+              </div>
+              <div>
+                <label className="block text-[10px] font-black text-gray-400 uppercase mb-2">Field</label>
+                <input name="field" required className="w-full bg-gray-50 border border-gray-100 rounded-lg p-3 text-sm focus:outline-none focus:border-black font-bold" placeholder="e.g. IT" />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-[10px] font-black text-gray-400 uppercase mb-2">Start Date</label>
+                <input name="start" type="month" required className="w-full bg-gray-50 border border-gray-100 rounded-lg p-3 text-sm focus:outline-none focus:border-black font-bold" />
+              </div>
+              <div>
+                <label className="block text-[10px] font-black text-gray-400 uppercase mb-2">Status</label>
+                <select name="status" className="w-full bg-gray-50 border border-gray-100 rounded-lg p-3 text-sm focus:outline-none focus:border-black font-bold">
+                  <option value="Ongoing">Ongoing</option>
+                  <option value="Completed">Completed</option>
+                </select>
+              </div>
+            </div>
+            <button type="submit" className="w-full bg-black text-white py-3 rounded-lg text-xs font-black uppercase tracking-widest hover:bg-gray-800 transition-colors">Save Education</button>
+          </form>
+        </ModalOverlay>
+      )}
+
+      <div className="max-w-6xl mx-auto pt-10 px-8">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+          <div className="lg:col-span-8 space-y-6">
+            <div className="bg-white border border-gray-100 rounded-xl overflow-hidden mb-6 shadow-sm">
+              <div className="h-48 bg-black relative">
+                 <div className="absolute inset-0 opacity-10 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')]"></div>
+              </div>
+              <div className="px-8 pb-8 relative pt-20">
+                <div className="absolute -top-16 left-8">
+                  <div className="w-36 h-36 rounded-full border-4 border-white bg-white overflow-hidden shadow-sm">
+                    <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${profile.username}`} alt="Profile" className="w-full h-full object-cover" />
+                  </div>
+                </div>
+                <div className="mt-4">
+                   <div className="flex justify-between items-start">
+                     <div>
+                       <h1 className="text-2xl font-black text-black tracking-tight mb-1">{profile.first_name} {profile.last_name}</h1>
+                       <p className="text-sm text-gray-600 font-bold mb-4">{profile.current_pos_type} {profile.department} at {profile.office}</p>
+                       <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+                         <div className="flex items-center gap-2"><Mail className="w-3.5 h-3.5 text-gray-400" /><span className="text-[10px] font-black text-gray-400 uppercase tracking-tight">{profile.email}</span></div>
+                         <div className="flex items-center gap-2"><MapPin className="w-3.5 h-3.5 text-gray-400" /><span className="text-[10px] font-black text-gray-400 uppercase tracking-tight">{profile.office}</span></div>
+                       </div>
+                     </div>
+                     <div className="flex gap-2">
+                       <button onClick={handleSync} disabled={isSyncing} className="bg-black text-white px-6 py-2.5 rounded-full text-[10px] font-black uppercase tracking-widest flex items-center gap-2 hover:bg-gray-800 transition-all shadow-lg shadow-gray-200">
+                         <Sparkles className="w-3.5 h-3.5" /> {isSyncing ? 'Syncing...' : 'Sync AI Bio'}
+                       </button>
+                     </div>
+                   </div>
+                </div>
+              </div>
+            </div>
+
+            <SectionCard title="Experience" actionIcon={Plus} onAction={() => setActiveModal('exp')}>
+              <div className="space-y-8">
+                {profile.professional.map((exp, idx) => (
+                  <div key={idx} className="flex gap-4 group">
+                    <div className="w-12 h-12 rounded bg-gray-50 border border-gray-100 flex items-center justify-center shrink-0 shadow-inner"><Building2 className="w-6 h-6 text-gray-300" /></div>
+                    <div className="border-b border-gray-50 pb-6 last:border-none w-full relative">
+                      <button 
+                        onClick={() => setProfile({...profile, professional: profile.professional.filter((_, i) => i !== idx)})}
+                        className="absolute top-0 right-0 p-1 opacity-0 group-hover:opacity-100 text-gray-300 hover:text-red-500 transition-all"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                      <h4 className="text-sm font-black text-black tracking-tight">{exp.title}</h4>
+                      <p className="text-xs text-black font-bold uppercase tracking-wider">{exp.organization}</p>
+                      <p className="text-[10px] text-gray-400 font-bold uppercase mt-1 tracking-widest">{exp.start_date} - {exp.end_date || 'Present'}</p>
+                      <p className="text-xs text-gray-600 mt-3 leading-relaxed font-medium italic">"{exp.responsibilities}"</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </SectionCard>
+
+            <SectionCard title="Education" actionIcon={Plus} onAction={() => setActiveModal('edu')}>
+              <div className="space-y-8">
+                {profile.education.map((edu, idx) => (
+                  <div key={idx} className="flex gap-4 group">
+                    <div className="w-12 h-12 rounded bg-gray-50 border border-gray-100 flex items-center justify-center shrink-0 shadow-inner"><GraduationCap className="w-6 h-6 text-gray-300" /></div>
+                    <div className="border-b border-gray-50 pb-6 last:border-none w-full relative">
+                      <button 
+                        onClick={() => setProfile({...profile, education: profile.education.filter((_, i) => i !== idx)})}
+                        className="absolute top-0 right-0 p-1 opacity-0 group-hover:opacity-100 text-gray-300 hover:text-red-500 transition-all"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                      <h4 className="text-sm font-black text-black tracking-tight">{edu.institution_name}</h4>
+                      <p className="text-xs text-black font-bold uppercase tracking-wider">{edu.degree} in {edu.field_of_study}</p>
+                      <p className="text-[10px] text-gray-400 font-bold uppercase mt-1 tracking-widest">{edu.start_date} - {edu.end_date || 'Present'}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </SectionCard>
+          </div>
+
+          <div className="lg:col-span-4 space-y-4">
+            <div className="bg-white border border-gray-100 rounded-xl p-8 shadow-sm">
+              <div className="flex justify-between items-center mb-6">
+                <h3 className="text-[10px] font-black text-black uppercase tracking-widest">Skills</h3>
+                <Plus className="w-4 h-4 text-gray-400 cursor-pointer hover:text-black" onClick={() => setActiveModal('skill')} />
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {profile.skills.map((s, idx) => (
+                  <span key={idx} className="bg-gray-50 border border-gray-100 px-3 py-1.5 rounded-lg text-[10px] font-black text-gray-600 uppercase tracking-widest group relative">
+                    {s.skill_name}
+                    <button onClick={() => setProfile({...profile, skills: profile.skills.filter((_, i) => i !== idx)})} className="absolute -top-1 -right-1 bg-white border border-gray-200 rounded-full w-4 h-4 flex items-center justify-center opacity-0 group-hover:opacity-100 shadow-sm"><X className="w-2.5 h-2.5 text-gray-400" /></button>
+                  </span>
+                ))}
+              </div>
+              <button onClick={() => setActiveModal('skill')} className="w-full mt-8 py-2.5 text-gray-400 text-[10px] font-black uppercase tracking-widest hover:text-black hover:bg-gray-50 rounded-lg transition-all border border-dashed border-gray-200">Expand Inventory</button>
+            </div>
+
+            <div className="bg-white border border-gray-100 rounded-xl p-8 shadow-sm">
+              <div className="flex justify-between items-center mb-6">
+                <h3 className="text-[10px] font-black text-black uppercase tracking-widest">Languages</h3>
+                <Plus className="w-4 h-4 text-gray-400 cursor-pointer hover:text-black" onClick={() => setActiveModal('lang')} />
+              </div>
+              <div className="space-y-4">
+                {profile.languages.map((l, idx) => (
+                  <div key={idx} className="flex flex-col border-b border-gray-50 last:border-none pb-4 last:pb-0 group relative">
+                    <span className="text-xs font-black text-black uppercase tracking-widest">{l.language_name}</span>
+                    <span className="text-[9px] text-gray-400 font-black uppercase tracking-widest mt-1">{l.level} competence</span>
+                    <button onClick={() => setProfile({...profile, languages: profile.languages.filter((_, i) => i !== idx)})} className="absolute top-0 right-0 p-1 opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 className="w-3.5 h-3.5 text-gray-300 hover:text-red-500" /></button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const App: React.FC = () => {
   const [userType] = useState<UserType>('Member');
-
   return (
     <div className="min-h-screen bg-white">
       <Navbar role={userType} />
