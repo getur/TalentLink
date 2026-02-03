@@ -26,6 +26,7 @@ export const MOCK_USER: UserProfile = {
   professional: [],
   skills: [{ skill_name: 'Project Management', category: 'Soft', level: 'Intermediate' }],
   languages: [{ language_name: 'English', level: 'Fluent' }],
+  saved_opportunity_ids: [],
 };
 
 export const MOCK_OPPORTUNITIES: Opportunity[] = [

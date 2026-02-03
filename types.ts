@@ -69,6 +69,7 @@ export interface UserProfile {
   professional: ProfessionalExperience[];
   skills: Skill[];
   languages: Language[];
+  saved_opportunity_ids: string[];
 }
 
 export interface Opportunity {
